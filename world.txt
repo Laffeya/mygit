@@ -1,0 +1,5 @@
+specialist   n.  专家
+awesome    adj.   可怕的;极好的;令人敬畏的
+verb       n.动词
+intransitive   不及物的
+transitive   及物的
