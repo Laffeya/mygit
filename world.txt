@@ -4,3 +4,5 @@ verb       n.动词
 intransitive   不及物的
 transitive   及物的
 specific to 针对，特定于
+sticky adj.	粘性的; 热湿的，闷热的; 极不愉快的; 不动的;
+ 
