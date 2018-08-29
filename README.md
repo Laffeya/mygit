@@ -1,3 +1,0 @@
-# mygit
-test
-xx
