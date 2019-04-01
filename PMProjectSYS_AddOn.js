@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         New Userscript
+// @name         PMProjectSYS
 // @namespace    http://tampermonkey.net/
 // @version      0.1
 // @description  try to take over the world!
@@ -12,14 +12,17 @@
 
     // Your code here...
     //弹出加载层
-    function load() {
-        $("<div class=\"datagrid-mask\" style='z-index: 999;'></div>").css({ display: "block", width: "100%", height: $(document).height() }).appendTo("body");
-        $("<div class=\"datagrid-mask-msg\" style='z-index: 999;height: 18px; padding-top: 12px; font-size:13px;'></div>").html("处理中，请稍候· · ·").appendTo("body").css({ display: "block", left: ($(document.body).outerWidth(true) - 190) / 2, top: ($(document).height() - 45) / 2 });
+    $.fn.mask = function (msg) {
+        var target = $(this);
+        var height = target.get(0).scrollHeight;
+        var width = target.width();
+        $("<div class='datagrid-mask'>").css({ display: "block", height: height }).appendTo(target);
+        $("<div class='datagrid-mask-msg'>").css({ display: "block", left: (width - 190) / 2, top: height - $(window).height() / 2 }).text(msg ? msg : "处理中，请稍候· · ·").appendTo(target);
     }
     //取消加载层  
-    function disLoad() {
-        $(".datagrid-mask").remove();
-        $(".datagrid-mask-msg").remove();
+    $.fn.unmask = function () {
+         $(this).children("div.datagrid-mask").remove();
+         $(this).children("div.datagrid-mask-msg").remove();
     }
     //展示结果
     function showResult(data) {
@@ -29,15 +32,15 @@
             title: '添加结果',
             width: 285,
             height: 350,
-            top: ($(window).height() - 350) * 0.5,
-            left: ($(window).width() - 820) * 0.5,
+            left: ($(window).width() - 190) / 2, 
+            top: document.body.scrollHeight - $(window).height() / 2 - 180,
             shadow: true,
             modal: true,
             closed: true,
             minimizable: false,
             maximizable: false,
             collapsible: false,
-            onClose: function() {
+            onClose: function () {
                 $('#startTimeHidden').val(data[0].dat);
                 $('#endTimeHidden').val(data.pop().dat);
                 clearSelect();
@@ -98,86 +101,58 @@
         $('.crm_button_sub').prepend(`<input type = "button" value="添加多条" id="addMuti" class="button_blue1_s0"/>`);
         $("#win").after(`<div id="win1" class="easyui-window" closed="true" title="" style="overflow: hidden;"><table id="dg1"></table></div>`);
         $('#addMuti').click(function () {
-            load();
+            $(document.body).mask();
 
-            var start = moment($('#workDate').val(), 'YYYY-MM-DD').add(-1, 'days');
-            var end = moment($('#workDate2').val(), 'YYYY-MM-DD');
-            var diff = moment.range(start, end).diff('days');
-            if (diff >= 0) {
-                var urlParams = "verbId=add&projectBaseinfoId=" + $('#projectBaseinfoId').val() + "&longTimeCode=" + $('#longTimeCode').combobox('getValue') + "&workStaffCode=" + $('#workStaffCode').val();
-                var promises = [];
-                for (var i = 1; i <= diff; i++) {
-                    //$.ajax跟easyui的进度条有冲突，跟【处理中，请稍候· · ·】也有冲突，要等所有的ajax执行完了后才显示进度条或【处理中，请稍候· · ·】
-                    /*
-                    var workDate_ = start.add(1, 'days');
-                    var workDate = workDate_.format('YYYY-MM-DD');
-                    if (workDate_.weekday() == 0 || workDate_.weekday() == 6) {//周末
-                        results.push([workDate, "2"])
-                        continue;
-                    }
-                    $.ajax({
-                        type: "POST",
-                        url: location.origin + location.pathname,
-                        data: urlParams + "&workDate=" + workDate,
-                        async: false,
-                        beforeSend: function(XHR){
-                            load();
-                        },
-                        success: function (htmlStr) {
-                            debugger;
-                            if (htmlStr.indexOf("保存成功") > -1) {
-                                results.push([workDate, "1"])
-                            } else {
-                                results.push([workDate, "0"])
+            var range = moment.range($('#workDate').val(), $('#workDate2').val());
+            var days = Array.from(range.by("days"), el => el.format('YYYY-MM-DD')).join(","); //2019-04-04,2019-04-05...
+            // $.get("http://tool.bitefu.net/jiari/?d=" , function (json) {  //No 'Access-Control-Allow-Origin' header is present on the requested resource. Origin 'http://123.126.109.38:60101' is therefore not allowed access.
+            $.ajax({
+                url: "http://timor.tech/api/holiday/batch",
+                data: "d=" + days,
+                success: function (json) {
+                    var holiday = json.holiday;
+                    var urlParams = "verbId=add&projectBaseinfoId=" + $('#projectBaseinfoId').val() + "&longTimeCode=" + $('#longTimeCode').combobox('getValue') + "&workStaffCode=" + $('#workStaffCode').val();
+                    var promises = [];
+                    $.each(json.holiday, (workDate, re) => {
+
+                        promises.push(new Promise(function (resolve, reject) {
+                            var workDate_ = moment(workDate, "YYYY-MM-DD");
+                            if ((re && re.holiday) || (!re && (workDate_.weekday() == 0 || workDate_.weekday() == 6))) {//节假日、周末
+                                resolve({ 'week': '周' + $.fn.calendar.defaults.weeks[workDate_.weekday()], 'dat': workDate, 're': 2 });
+                                return false;
                             }
+                            parent.Ext.Ajax.request({
+                                url: location.origin + location.pathname,
+                                method: 'POST',
+                                params: urlParams + "&workDate=" + workDate,
+                                success: function (htmlStr, opts) {
+                                    var paramsObj = parent.Ext.urlDecode(opts.params);
+                                    var workDate = paramsObj.workDate;
+                                    var week = "周" + $.fn.calendar.defaults.weeks[moment(workDate, 'YYYY-MM-DD').weekday()];
+                                    if (htmlStr.responseText.indexOf("保存成功") > -1) {
+                                        resolve({ 'week': week, 'dat': workDate, 're': 1 });
+                                    } else {
+                                        resolve({ 'week': week, 'dat': workDate, 're': 0 });
+                                    }
 
-                        },
-                        error: function (data) {
-                            results.push([workDate, "0"])
-                        },
-                        complete:function(){
-                            disLoad();
-                        }
-                    });*/
-                    promises.push(new Promise(function (resolve, reject) {
-                        var workDate_ = start.add(1, 'days');
-                        var workDate = workDate_.format('YYYY-MM-DD');
-                        if (workDate_.weekday() == 0 || workDate_.weekday() == 6) {//周末
-                            resolve({ 'week': '周' + $.fn.calendar.defaults.weeks[workDate_.weekday()], 'dat': workDate, 're': 2 });
-                            return false;
-                        }
-                        parent.Ext.Ajax.request({
-                            url: location.origin + location.pathname,
-                            method: 'POST',
-                            params: urlParams + "&workDate=" + workDate,
-                            success: function (htmlStr, opts) {
-                                var paramsObj = parent.Ext.urlDecode(opts.params);
-                                var workDate = paramsObj.workDate;
-                                var week = "周" + $.fn.calendar.defaults.weeks[moment(workDate, 'YYYY-MM-DD').weekday()];
-                                if (htmlStr.responseText.indexOf("保存成功") > -1) {
-                                    resolve({ 'week': week, 'dat': workDate, 're': 1 });
-                                } else {
+                                },
+                                failure: function (response, opts) {
+                                    var paramsObj = parent.Ext.urlDecode(opts.params)
+                                    var workDate = paramsObj.workDate;
+                                    var week = "周" + $.fn.calendar.defaults.weeks[moment(workDate, 'YYYY-MM-DD').weekday()];
                                     resolve({ 'week': week, 'dat': workDate, 're': 0 });
                                 }
-
-                            },
-                            failure: function (response, opts) {
-                                var paramsObj = parent.Ext.urlDecode(opts.params)
-                                var workDate = paramsObj.workDate;
-                                var week = "周" + $.fn.calendar.defaults.weeks[moment(workDate, 'YYYY-MM-DD').weekday()];
-                                resolve({ 'week': week, 'dat': workDate, 're': 0 });
-                            }
-                        });
-                    }));
+                            });
+                        }));
+                    });
+                    //展示结果
+                    Promise.all(promises).then(function (results) {
+                        console.log(results);
+                        $(document.body).unmask();
+                        showResult(results);
+                    });
                 }
-                //展示结果
-                Promise.all(promises).then(function (results) {
-                    console.log(results);
-                    disLoad();
-                    showResult(results);
-                });
-
-            }
+            });
 
         });
     });
